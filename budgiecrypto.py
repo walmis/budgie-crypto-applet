@@ -13,18 +13,20 @@ from gettext import gettext as _
 from gettext import textdomain, bindtextdomain
 import gi
 gi.require_version('Budgie', '1.0')
-from gi.repository import Budgie, GObject, GLib
+from gi.repository import Budgie, GObject, GLib, Gdk
 import sys
 import os
 import logging
 import tempfile
-from threading import Event
-
+from threading import Event, Thread
+import gdax
+import time
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 
 
 logging.basicConfig(level=logging.INFO)
+
 
 
 class IndicatorSysmonitor(object):
@@ -34,8 +36,50 @@ class IndicatorSysmonitor(object):
         self._preferences_dialog = None
         self._help_dialog = None
 
-        self.ind = Gtk.Button.new()
-        self.ind.set_label("Init...")
+
+        
+        self.label = Gtk.Label.new()
+        self.label.set_name("test")
+        self.tmpl = "%s %.2f <span color='%s'>%s %.1f%%</span>"
+        
+
+        self.public_client = gdax.PublicClient()
+        
+        
+        self.thd = Thread(target=self.thread)
+        self.thd.isDaemon = True
+        self.thd.start()
+        
+    def thread(self):
+        data = self.public_client.get_product_24hr_stats('BTC-USD')
+        last = float(data["last"])
+        while 1:
+            data = self.public_client.get_product_24hr_stats('BTC-USD')
+   
+            perc = -(100-(last/float(data["open"]))*100)
+            color = "red" if perc < 0 else "green"
+            if color == "red":
+                symbol = "▼"
+            else:
+                symbol = "▲"
+                
+            s = self.label.get_style_context()
+            
+            s.remove_class("tick-green")
+            s.remove_class("tick-red")
+            
+            if float(data["last"]) != last:
+                #print("add class")
+                if float(data["last"]) < last:
+                    s.add_class("tick-red")
+                else:
+                    s.add_class("tick-green")
+                  
+            last = float(data["last"])
+            self.label.set_markup(self.tmpl % ("฿ ", last, color, symbol, perc))
+            
+            #print(data)
+            time.sleep(10)
 
     def popup_menu(self, *args):
         self.popup.popup(None, None, None, None, 0, Gtk.get_current_event_time())
@@ -90,55 +134,7 @@ class IndicatorSysmonitor(object):
     def save_settings(self):
         self.sensor_mgr.save_settings()
 
-    # actions raised from menu
-    def on_preferences_activated(self, event=None):
-        """Raises the preferences dialog. If it's already open, it's
-        focused"""
-        if self._preferences_dialog is not None:
-            self._preferences_dialog.present()
-            return
 
-        self._preferences_dialog = Preferences(self)
-        self._preferences_dialog.run()
-        self._preferences_dialog = None
-
-    def on_full_sysmon_activated(self, event=None):
-        os.system('gnome-system-monitor &')
-
-    def on_exit(self, event=None, data=None):
-        """Action call when the main programs is closed."""
-        # cleanup temporary indicator icon
-        os.remove(self.tindicator)
-        # close the open dialogs
-        if self._help_dialog is not None:
-            self._help_dialog.destroy()
-
-        if self._preferences_dialog is not None:
-            self._preferences_dialog.destroy()
-
-        logging.info("Terminated")
-        self.alive.clear()  # DM: why bother with Event() ???
-
-        try:
-            Gtk.main_quit()
-        except RuntimeError:
-            pass
-
-    def _on_help(self, event=None, data=None):
-        """Raise a dialog with info about the app."""
-        if self._help_dialog is not None:
-            self._help_dialog.present()
-            return
-
-        self._help_dialog = Gtk.MessageDialog(
-            None, Gtk.DialogFlags.DESTROY_WITH_PARENT, Gtk.MessageType.INFO,
-            Gtk.ButtonsType.OK, None)
-
-        self._help_dialog.set_title(_("Help"))
-        self._help_dialog.set_markup(HELP_MSG)
-        self._help_dialog.run()
-        self._help_dialog.destroy()
-        self._help_dialog = None
 
 class BudgieSysMonitor(GObject.Object, Budgie.Plugin):
     """ This is simply an entry point into the SysMonitor applet
@@ -167,13 +163,52 @@ class BudgieSysMonitorApplet(Budgie.Applet):
 
     def __init__(self, uuid):
         Budgie.Applet.__init__(self)
+        
+        css = Gtk.CssProvider()
+
+        # css.load_from_file(file)
+        b = b"""
+            @keyframes spin {
+              0% { background-color: initial; }
+              50% { background-color: #00ff00; } 
+              100% { background-color: initial; }
+            }
+            @keyframes spin-red {
+              0% { background-color: initial; }
+              50% { background-color: #ff0000; } 
+              100% { background-color: initial; }
+            }
+            .tick-green {
+              animation-name: spin;
+              animation-duration: 1s;
+              animation-timing-function: linear;
+              animation-iteration-count: 3;
+            }
+            .tick-red {
+              animation-name: spin-red;
+              animation-duration: 1s;
+              animation-timing-function: linear;
+              animation-iteration-count: 3;
+            }
+            #test {
+                padding-left: 5px;
+                padding-right: 5px;
+            }
+        """
+
+        css.load_from_data(b)
+
+        Gtk.StyleContext.add_provider_for_screen(
+           Gdk.Screen.get_default(),
+           css,
+           Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
         # Add a button to our UI
         logging.info("start")
 
 
         self.app = IndicatorSysmonitor()
-        self.button = self.app.ind
-        self.button.set_relief(Gtk.ReliefStyle.NONE)
+        self.button = self.app.label
+
         self.add(self.button)
         self.show_all()
