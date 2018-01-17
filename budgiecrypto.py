@@ -28,16 +28,11 @@ from gi.repository import Gtk
 logging.basicConfig(level=logging.INFO)
 
 
-
 class IndicatorSysmonitor(object):
     SENSORS_DISABLED = False
 
     def __init__(self):
-        self._preferences_dialog = None
-        self._help_dialog = None
-
-
-        
+     
         self.label = Gtk.Label.new()
         self.label.set_name("test")
         self.tmpl = "%s %.2f <span color='%s'>%s %.1f%%</span>"
@@ -54,95 +49,47 @@ class IndicatorSysmonitor(object):
         data = self.public_client.get_product_24hr_stats('BTC-USD')
         last = float(data["last"])
         while 1:
-            data = self.public_client.get_product_24hr_stats('BTC-USD')
-   
-            perc = -(100-(last/float(data["open"]))*100)
-            color = "red" if perc < 0 else "green"
-            if color == "red":
-                symbol = "▼"
-            else:
-                symbol = "▲"
-                
-            s = self.label.get_style_context()
-            
-            s.remove_class("tick-green")
-            s.remove_class("tick-red")
-            
-            if float(data["last"]) != last:
-                #print("add class")
-                if float(data["last"]) < last:
-                    s.add_class("tick-red")
+            try:
+                data = self.public_client.get_product_24hr_stats('BTC-USD')
+       
+                perc = -(100-(last/float(data["open"]))*100)
+                color = "red" if perc < 0 else "green"
+                if color == "red":
+                    symbol = "▼"
                 else:
-                    s.add_class("tick-green")
-                  
-            last = float(data["last"])
-            self.label.set_markup(self.tmpl % ("฿ ", last, color, symbol, perc))
-            
-            #print(data)
-            time.sleep(10)
-
-    def popup_menu(self, *args):
-        self.popup.popup(None, None, None, None, 0, Gtk.get_current_event_time())
-
-    def update_indicator_guide(self):
-
-        guide = self.sensor_mgr.get_guide()
-
-    def update(self, data):
-        # data is the dict of all sensors and their values
-        # { name, label }
-
-        # look through data and find out if there are any icons to be set
-        for sensor in data:
-            test_str = data[sensor].lower()
-            if "use_icon" in test_str:
-                path = data[sensor].split(":")[1]
-                print(path)
-                self.ind.set_icon_full(path, "")
-                # now strip the icon output from data so that it is not displayed
-                remaining = test_str.split("use_icon")[0].strip()
-                if not remaining:
-                    remaining = " "
-
-                data[sensor] = remaining
-
-            if "clear_icon" in test_str:
-                self.ind.set_icon_full(self.tindicator, "")
-
-                remaining = test_str.split("clear_icon")[0].strip()
-                if not remaining:
-                    remaining = " "
-
-                data[sensor] = remaining
-
-        label = self.sensor_mgr.get_label(data)
-
-
-        def update_label(label):
-            self.ind.set_label(label)
-            return False
-        if label and self.ind:
-            GLib.idle_add(update_label, label.strip())
-
-    def load_settings(self):
-
-        self.sensor_mgr.load_settings()
-        self.sensor_mgr.initiate_fetcher(self)
-        self.update_indicator_guide()
-
-    # @staticmethod
-    def save_settings(self):
-        self.sensor_mgr.save_settings()
+                    symbol = "▲"
+                    
+                s = self.label.get_style_context()
+                
+                GLib.idle_add(s.remove_class, "tick-green")
+                GLib.idle_add(s.remove_class, "tick-red")
+                
+                if float(data["last"]) != last:
+                    #print("add class")
+                    if float(data["last"]) < last:
+                        GLib.idle_add(s.add_class, "tick-red")
+                    else:
+                        GLib.idle_add(s.add_class, "tick-green")
+                      
+                last = float(data["last"])
+                GLib.idle_add(self.label.set_markup, self.tmpl % ("฿ ", last, color, symbol, perc))
+                
+                #print(data)
+                time.sleep(10)
+            except:
+                time.sleep(10)
+                GLib.idle_add(self.label.set_markup, "Failed to fetch BTC")
+                continue
 
 
 
-class BudgieSysMonitor(GObject.Object, Budgie.Plugin):
+class BudgieCrypto(GObject.Object, Budgie.Plugin):
     """ This is simply an entry point into the SysMonitor applet
         Note you must always override Object, and implement Plugin.
     """
 
     # Good manners, make sure we have unique name in GObject type system
-    __gtype_name__ = "BudgieSysMonitor"
+    __gtype_name__ = "BudgieCrypto"
 
     def __init__(self):
         """ Initialisation is important.
@@ -154,9 +101,9 @@ class BudgieSysMonitor(GObject.Object, Budgie.Plugin):
             instance with the given UUID. The UUID is determined by the
             BudgiePanelManager, and is used for lifetime tracking.
         """
-        return BudgieSysMonitorApplet(uuid)
+        return BudgieCryptoApplet(uuid)
 
-class BudgieSysMonitorApplet(Budgie.Applet):
+class BudgieCryptoApplet(Budgie.Applet):
     """ Budgie.Applet is in fact a Gtk.Bin """
 
     button = None
@@ -165,6 +112,7 @@ class BudgieSysMonitorApplet(Budgie.Applet):
         Budgie.Applet.__init__(self)
         
         css = Gtk.CssProvider()
+        self.uuid = uuid
 
         # css.load_from_file(file)
         b = b"""
