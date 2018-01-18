@@ -28,6 +28,7 @@ from gi.repository import Gtk
 logging.basicConfig(level=logging.INFO)
 
 
+
 class IndicatorSysmonitor(object):
     SENSORS_DISABLED = False
 
@@ -56,8 +57,10 @@ class IndicatorSysmonitor(object):
                 color = "red" if perc < 0 else "green"
                 if color == "red":
                     symbol = "▼"
+                    color = "#ff0000"
                 else:
                     symbol = "▲"
+                    color = "#00ff00"
                     
                 s = self.label.get_style_context()
                 
